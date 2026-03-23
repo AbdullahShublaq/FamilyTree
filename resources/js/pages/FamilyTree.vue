@@ -260,22 +260,6 @@ const setMode = (m: 'grandfather' | 'child' | 'edit') => {
     }
 };
 
-const selectMember = (m: FamilyMember) => {
-    selectedMember.value = m;
-    formMode.value = 'edit';
-    form.value = {
-        id: m.id,
-        name: m.name,
-        gender: m.gender,
-        birth_date: m.birth_date || '',
-        death_date: m.death_date || '',
-        wife_name: m.wife_name || '',
-        description: m.description || '',
-        parent_id: m.parent_id,
-    };
-    openForm();
-};
-
 const resetForm = () => {
     form.value = {
         id: undefined,
@@ -314,6 +298,7 @@ const submitForm = async () => {
         await fetchData();
         closeForm();
     } catch (e) {
+        console.log(e);
         alert('حدث خطأ في الحفظ');
     } finally {
         loading.value = false;
@@ -331,6 +316,7 @@ const deleteMember = async () => {
         await fetchData();
         closeForm();
     } catch (e) {
+        console.log(e);
         alert('حدث خطأ في الحذف');
     } finally {
         loading.value = false;
