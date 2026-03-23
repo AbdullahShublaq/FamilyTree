@@ -35,14 +35,14 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "concurrently": "^9.0.1",
-        "echarts": "^6.0.0",
+        "echarts": "^5.5.0",
         "laravel-vite-plugin": "^2.0.0",
         "tailwind-merge": "^3.2.0",
         "tailwindcss": "^4.1.1",
         "typescript": "^5.2.2",
         "vite": "^7.0.4",
         "vue": "^3.5.13",
-        "vue-echarts": "^8.0.1"
+        "vue-echarts": "^6.7.0"
     },
     "optionalDependencies": {
         "@rollup/rollup-linux-x64-gnu": "4.9.5",
