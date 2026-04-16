@@ -30,10 +30,7 @@ class FamilyMemberController extends Controller
 
     public function getAllMembers()
     {
-        $members = FamilyMember::with('parent')
-            ->withTrashed()
-            ->orderBy('name')
-            ->get();
+        $members = FamilyMember::orderBy('name')->get();
 
         return response()->json($members);
     }
@@ -98,8 +95,14 @@ class FamilyMemberController extends Controller
 
     public function destroy(FamilyMember $familyMember)
     {
-        $familyMember->delete();
+        $this->deleteRecursive($familyMember);
 
         return response()->json(['success' => true]);
+    }
+
+    private function deleteRecursive(FamilyMember $member): void
+    {
+        $member->children()->each(fn (FamilyMember $child) => $this->deleteRecursive($child));
+        $member->delete();
     }
 }

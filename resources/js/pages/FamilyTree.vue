@@ -88,10 +88,54 @@ const buildTree = (flat: FamilyMember[]): FamilyMember[] => {
     return roots;
 };
 
-const findMember = (name: string): FamilyMember | null => {
+const LEVEL1_COLORS = ['#4D96FF'];
+const LEVEL2_COLORS = [
+    '#FF6B6B',
+    '#6BCB77',
+    '#FFD93D',
+    '#FF6EC7',
+    '#845EC2',
+    '#FFA07A',
+    '#20C997',
+    '#E84393',
+];
+
+const hexToRgba = (hex: string, opacity: number): string => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${opacity})`;
+};
+
+const assignLighterColors = (
+    nodes: any[],
+    parentColor: string,
+    depth: number,
+) => {
+    const opacity = Math.max(1 - (depth - 2) * 0.2, 0.25);
+    nodes.forEach((node: any) => {
+        node.itemStyle = { color: hexToRgba(parentColor, opacity) };
+        assignLighterColors(node.children || [], parentColor, depth + 1);
+    });
+};
+
+const assignColors = (roots: any[]) => {
+    if (roots.length !== 1) return;
+
+    roots[0].itemStyle = { color: LEVEL1_COLORS[0] };
+
+    roots[0].children?.forEach((child: any, index: number) => {
+        const color = LEVEL2_COLORS[index % LEVEL2_COLORS.length];
+        child.itemStyle = { color };
+        assignLighterColors(child.children || [], color, 3);
+    });
+};
+
+const findMember = (id: number): FamilyMember | null => {
+    // console.log(id);
     const search = (list: FamilyMember[]): FamilyMember | null => {
         for (const m of list) {
-            if (m.name === name) return m;
+            if (m.id === id) return m;
             if (m.children?.length) {
                 const f = search(m.children);
                 if (f) return f;
@@ -100,6 +144,67 @@ const findMember = (name: string): FamilyMember | null => {
         return null;
     };
     return search(members.value);
+};
+
+const FONT_SIZE = 18;
+const CHAR_WIDTH = FONT_SIZE * 3;
+const MIN_LEVEL_WIDTH = 150;
+const CHART_PADDING = 120;
+
+const getMaxNameLengthPerLevel = (
+    nodes: any[],
+    depth: number = 1,
+    result: Map<number, number> = new Map(),
+): Map<number, number> => {
+    nodes.forEach((node: any) => {
+        const current = result.get(depth) || 0;
+        result.set(depth, Math.max(current, node.name.length));
+        if (node.children?.length) {
+            getMaxNameLengthPerLevel(node.children, depth + 1, result);
+        }
+    });
+    return result;
+};
+
+const generateLevels = (maxNamePerLevel: Map<number, number>) => {
+    const levels: any[] = [{}];
+
+    let totalPixels = 0;
+    const widths: number[] = [];
+    for (let i = 1; i <= maxNamePerLevel.size; i++) {
+        const maxChars = maxNamePerLevel.get(i) || 1;
+        const width = Math.max(
+            maxChars * CHAR_WIDTH + CHART_PADDING,
+            MIN_LEVEL_WIDTH,
+        );
+        widths.push(width);
+        totalPixels += width;
+    }
+
+    let offset = 0;
+    for (let i = 0; i < widths.length; i++) {
+        const r0 = ((offset / totalPixels) * 100).toFixed(1) + '%';
+        offset += widths[i];
+        const r = Math.min((offset / totalPixels) * 100, 100).toFixed(1) + '%';
+
+        levels.push({
+            r0,
+            r,
+            label: {
+                rotate: 'tangential',
+                color: '#fff',
+                fontSize: FONT_SIZE,
+                show: true,
+                overflow: 'break',
+                formatter: '{b}',
+            },
+            itemStyle: {
+                borderWidth: 1,
+            },
+        });
+    }
+
+    return levels;
 };
 
 const initChart = async () => {
@@ -115,7 +220,8 @@ const initChart = async () => {
     chart.off('click');
     chart.on('click', (params: any) => {
         if (params.name && params.name !== 'لا توجد بيانات') {
-            const m = findMember(params.name);
+            const m = findMember(params.data.id);
+            // console.log(m);
             if (m?.id) {
                 selectedMember.value = m;
             }
@@ -125,7 +231,6 @@ const initChart = async () => {
     });
 
     setTimeout(() => chart?.resize(), 100);
-    window.addEventListener('resize', () => chart?.resize());
 };
 
 const renderChart = () => {
@@ -136,14 +241,20 @@ const renderChart = () => {
             ? members.value
             : [{ name: 'لا توجد بيانات', value: 1 }];
 
+    let levels: any[] = [{}];
+    if (members.value.length > 0) {
+        const maxNamePerLevel = getMaxNameLengthPerLevel(data as any[]);
+        levels = generateLevels(maxNamePerLevel);
+        assignColors(data as any[]);
+    }
+
     chart.setOption(
         {
             backgroundColor: '#1a1a2e',
-            // label: { show: true, formatter: '{b}: {c}' }, // Displays 'Node A: 1'
             tooltip: {
                 trigger: 'item',
                 formatter: (params: any) => {
-                    const m = findMember(params.name);
+                    const m = findMember(params.data.id);
                     if (!m) return params.name;
                     let html = `<strong>${m.name}</strong><br/>الجنس: ${m.gender === 'male' ? 'ذكر' : 'أنثى'}`;
                     if (m.birth_date) html += `<br/>الميلاد: ${m.birth_date}`;
@@ -156,16 +267,23 @@ const renderChart = () => {
                 {
                     type: 'sunburst',
                     data: data,
-                    radius: ['0%', '95%'],
+                    radius: ['0%', '100%'],
                     center: ['50%', '50%'],
-                    label: {
-                        rotate: 'radial',
-                        color: '#fff',
-                        fontSize: 14,
-                        show: true,
-                    },
+                    sort: undefined,
+                    color: [
+                        '#FF6B6B',
+                        '#FFD93D',
+                        '#6BCB77',
+                        '#4D96FF',
+                        '#FF6EC7',
+                        '#845EC2',
+                        '#FFA07A',
+                        '#20C997',
+                        '#FFB6C1',
+                        '#00CED1',
+                    ],
                     emphasis: { focus: 'ancestor' },
-                    itemStyle: { borderRadius: 4, borderWidth: 2 },
+                    levels: levels,
                 },
             ],
         },
@@ -310,9 +428,17 @@ const deleteMember = async () => {
     if (!confirm('هل أنت متأكد من الحذف؟')) return;
     loading.value = true;
     try {
-        await fetch(`/api/family-members/${selectedMember.value.id}`, {
-            method: 'DELETE',
-        });
+        const res = await fetch(
+            `/api/family-members/${selectedMember.value.id}`,
+            {
+                method: 'DELETE',
+            },
+        );
+        if (!res.ok) {
+            alert('حدث خطأ في الحذف: ' + res.status);
+            return;
+        }
+        selectedMember.value = null;
         await fetchData();
         closeForm();
     } catch (e) {
@@ -386,7 +512,7 @@ const deleteMember = async () => {
         <div class="flex justify-center px-2">
             <div
                 class="relative rounded-2xl shadow-2xl"
-                style="height: 85vh; width: 100%; background: #1a1a2e"
+                style="height: 95vh; width: 100%; background: #1a1a2e"
             >
                 <div
                     ref="chartContainer"
