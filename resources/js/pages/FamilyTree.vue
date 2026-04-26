@@ -36,6 +36,28 @@ const form = ref({
 });
 
 const loading = ref(false);
+const zoomLevel = ref(1);
+
+const zoomIn = () => {
+    zoomLevel.value = Math.min(zoomLevel.value + 0.25, 4);
+    applyZoom();
+};
+
+const zoomOut = () => {
+    zoomLevel.value = Math.max(zoomLevel.value - 0.25, 0.25);
+    applyZoom();
+};
+
+const applyZoom = () => {
+    if (!chart || !chartContainer.value) return;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const baseSize = Math.max(vw, vh);
+    const size = Math.round(baseSize * zoomLevel.value);
+    chartContainer.value.style.width = size + 'px';
+    chartContainer.value.style.height = size + 'px';
+    chart.resize({ width: size, height: size });
+};
 
 const buildTree = (flat: FamilyMember[]): FamilyMember[] => {
     const map = new Map<number, any>();
@@ -131,6 +153,23 @@ const assignColors = (roots: any[]) => {
     });
 };
 
+const findParentName = (id: number): string | null => {
+    const search = (
+        list: FamilyMember[],
+        parent: FamilyMember | null,
+    ): string | null => {
+        for (const m of list) {
+            if (m.id === id) return parent?.name || null;
+            if (m.children?.length) {
+                const f = search(m.children, m);
+                if (f !== undefined) return f;
+            }
+        }
+        return undefined as any;
+    };
+    return search(members.value, null);
+};
+
 const findMember = (id: number): FamilyMember | null => {
     // console.log(id);
     const search = (list: FamilyMember[]): FamilyMember | null => {
@@ -146,8 +185,8 @@ const findMember = (id: number): FamilyMember | null => {
     return search(members.value);
 };
 
-const FONT_SIZE = 18;
-const CHAR_WIDTH = FONT_SIZE * 3;
+const BASE_FONT_SIZE = 18;
+const CHAR_WIDTH = BASE_FONT_SIZE * 3;
 const MIN_LEVEL_WIDTH = 150;
 const CHART_PADDING = 120;
 
@@ -168,10 +207,11 @@ const getMaxNameLengthPerLevel = (
 
 const generateLevels = (maxNamePerLevel: Map<number, number>) => {
     const levels: any[] = [{}];
+    const totalLevels = maxNamePerLevel.size;
 
     let totalPixels = 0;
     const widths: number[] = [];
-    for (let i = 1; i <= maxNamePerLevel.size; i++) {
+    for (let i = 1; i <= totalLevels; i++) {
         const maxChars = maxNamePerLevel.get(i) || 1;
         const width = Math.max(
             maxChars * CHAR_WIDTH + CHART_PADDING,
@@ -187,15 +227,23 @@ const generateLevels = (maxNamePerLevel: Map<number, number>) => {
         offset += widths[i];
         const r = Math.min((offset / totalPixels) * 100, 100).toFixed(1) + '%';
 
+        const levelNum = i + 1;
+        const fontScale = Math.max(1 - (levelNum - 1) * 0.05, 0.7);
+        const fontSize = Math.max(
+            Math.round(BASE_FONT_SIZE * zoomLevel.value * fontScale),
+            12,
+        );
+
         levels.push({
             r0,
             r,
             label: {
                 rotate: 'tangential',
                 color: '#fff',
-                fontSize: FONT_SIZE,
+                fontSize,
                 show: true,
-                overflow: 'break',
+                overflow: 'truncate',
+                ellipsis: '..',
                 formatter: '{b}',
             },
             itemStyle: {
@@ -311,7 +359,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-    window.removeEventListener('resize', () => chart?.resize());
     chart?.dispose();
     chart = null;
 });
@@ -458,13 +505,14 @@ const deleteMember = async () => {
         />
     </Head>
 
-    <div
-        class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 md:p-8"
-        style="font-family: 'Tajawal', sans-serif"
-    >
-        <div class="mb-6 flex items-center justify-between">
+    <div style="font-family: 'Tajawal', sans-serif">
+        <div
+            class="fixed top-0 right-0 left-0 z-10 flex h-14 items-center justify-between bg-slate-900/80 px-4 backdrop-blur-sm md:px-8"
+        >
             <div class="flex items-center gap-4">
-                <h1 class="text-3xl font-bold text-white">شجرة العائلة</h1>
+                <h1 class="text-3xl font-bold text-white drop-shadow-lg">
+                    شجرة العائلة
+                </h1>
                 <button
                     @click="openForm()"
                     class="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-600"
@@ -472,33 +520,50 @@ const deleteMember = async () => {
                     إضافة جد
                 </button>
             </div>
-            <span class="text-sm text-slate-400"
-                >انقر على أي شخص لتعديل بياناته</span
-            >
+            <div class="flex items-center gap-2">
+                <button
+                    @click="zoomIn"
+                    class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 text-lg font-bold text-white hover:bg-white/30"
+                >
+                    +
+                </button>
+                <span class="min-w-[3rem] text-center text-sm text-white"
+                    >{{ Math.round(zoomLevel * 100) }}%</span
+                >
+                <button
+                    @click="zoomOut"
+                    class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 text-lg font-bold text-white hover:bg-white/30"
+                >
+                    −
+                </button>
+            </div>
         </div>
 
         <div
             v-if="selectedMember"
-            class="mb-4 flex items-center justify-between rounded-lg bg-amber-500/20 p-3 text-amber-300"
+            class="fixed top-20 left-1/2 z-20 flex w-full max-w-2xl -translate-x-1/2 items-center justify-between rounded-lg bg-amber-500/20 p-3 text-amber-300 backdrop-blur-sm"
         >
-            <div>
-                <div class="flex items-center gap-1">
-                    <span>تم الاختيار:</span>
-                    <strong>{{ selectedMember.name }}</strong>
-                </div>
+            <div class="flex items-center gap-1">
+                <span>تم الاختيار:</span>
+                <strong v-if="findParentName(selectedMember.id!)">
+                    {{ selectedMember.name }} ({{
+                        findParentName(selectedMember.id!)
+                    }})
+                </strong>
+                <strong v-else>{{ selectedMember.name }}</strong>
             </div>
-            <div class="flex gap-1">
+            <div class="flex items-center gap-1">
                 <button
                     @click="openFormForUpdate"
                     class="rounded bg-emerald-500 px-3 py-1 text-sm text-white hover:bg-emerald-600"
                 >
-                    تحديث البيانات
+                    تحديث
                 </button>
                 <button
                     @click="openFormForAddChild"
                     class="rounded bg-blue-500 px-3 py-1 text-sm text-white hover:bg-blue-600"
                 >
-                    + إضافة ابن/ابنة
+                    + ابن/ابنة
                 </button>
                 <button
                     @click="deleteMember"
@@ -506,19 +571,28 @@ const deleteMember = async () => {
                 >
                     حذف
                 </button>
+                <button
+                    @click="selectedMember = null"
+                    class="mr-1 text-xl text-amber-300 hover:text-white"
+                >
+                    ×
+                </button>
             </div>
         </div>
 
-        <div class="flex justify-center px-2">
+        <div
+            class="flex items-center justify-center"
+            style="
+                width: 100vw;
+                min-height: 100vh;
+                margin-top: 3.5rem;
+                background: #1a1a2e;
+            "
+        >
             <div
-                class="relative rounded-2xl shadow-2xl"
-                style="height: 95vh; width: 100%; background: #1a1a2e"
-            >
-                <div
-                    ref="chartContainer"
-                    style="width: 100%; height: 100%"
-                ></div>
-            </div>
+                ref="chartContainer"
+                style="width: 100vw; height: 100vh; background: #1a1a2e"
+            ></div>
         </div>
 
         <Transition
